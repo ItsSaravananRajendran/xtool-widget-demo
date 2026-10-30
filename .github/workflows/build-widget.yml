@@ -34,17 +34,18 @@ jobs:
           curl -sL -o xtool.app.zip \
             https://github.com/xtool-org/xtool/releases/download/1.24.0/xtool.app.zip
           unzip -q xtool.app.zip
-          echo "$PWD/xtool.app/Contents/Resources/bin" >> "$GITHUB_PATH"
-          xtool --version
+          XTOOL="$PWD/xtool.app/Contents/Resources/bin/xtool"
+          echo "XTOOL=$XTOOL" >> "$GITHUB_ENV"
+          "$XTOOL" --version
 
-      - name: Install the Darwin Swift SDK
+      - name: Check the Darwin Swift SDK
         run: |
           xcrun -sdk iphoneos --show-sdk-path
-          xtool sdk status || true
+          "$XTOOL" sdk status || true
 
       - name: Build the app + widget extension as an .ipa
         run: |
-          xtool dev build --configuration release --ipa
+          "$XTOOL" dev build --configuration release --ipa
 
       - name: Package and verify
         run: |
