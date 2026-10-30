@@ -1,0 +1,6 @@
+version: 1
+bundleID: com.example.WidgetDemo
+product: WidgetDemo
+extensions:
+  - product: WidgetDemoWidget
+    infoPath: Support/WidgetDemoWidget-Info.plist

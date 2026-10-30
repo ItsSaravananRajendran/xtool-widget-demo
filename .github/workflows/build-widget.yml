@@ -1,0 +1,70 @@
+name: Build Widget App with xtool
+
+# Builds a SwiftPM-based iOS app (with a WidgetKit extension) into an .ipa
+# using xtool instead of the Xcode build system.
+#
+# xtool is a cross-platform Xcode replacement: it drives SwiftPM against the
+# iOS SDK, assembles the app + extension bundles, and can sign them.
+#
+# Widgets are app extensions, so the bundle ends up containing:
+#   Payload/WidgetDemo.app/            (the host app)
+#   Payload/WidgetDemo.app/PlugIns/WidgetDemoWidget.appex   (the widget)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode (for the iOS SDK)
+        run: |
+          XC=$(ls -d /Applications/Xcode*.app | grep -vE "\.app\.app" | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          xcrun -sdk iphoneos --show-sdk-path
+
+      - name: Install xtool
+        run: |
+          curl -sL -o xtool.app.zip \
+            https://github.com/xtool-org/xtool/releases/download/1.24.0/xtool.app.zip
+          unzip -q xtool.app.zip
+          echo "$PWD/xtool.app/Contents/Resources/bin" >> "$GITHUB_PATH"
+          xtool --version
+
+      - name: Install the Darwin Swift SDK
+        run: |
+          xcrun -sdk iphoneos --show-sdk-path
+          xtool sdk status || true
+
+      - name: Build the app + widget extension as an .ipa
+        run: |
+          xtool dev build --configuration release --ipa
+
+      - name: Package and verify
+        run: |
+          ls -la
+          IPA=$(find . -maxdepth 2 -name "*.ipa" | head -1)
+          echo "IPA=$IPA"
+          test -n "$IPA" || { echo "NO IPA BUILT"; exit 1; }
+          rm -rf verify && mkdir verify
+          unzip -q "$IPA" -d verify
+          echo "--- app bundle contents ---"
+          ls -la verify/Payload/*.app/
+          echo "--- widget extension present? ---"
+          find verify/Payload -name "*.appex" -maxdepth 4
+          echo "--- widget Info.plist extension point ---"
+          plutil -p verify/Payload/*.app/PlugIns/*.appex/Info.plist 2>&1 | head -20
+          echo "--- binary arch/platform ---"
+          file verify/Payload/*.app/WidgetDemo
+          otool -l verify/Payload/*.app/WidgetDemo | grep -A3 LC_BUILD_VERSION | head -6
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WidgetDemo-ipa
+          path: "*.ipa"
