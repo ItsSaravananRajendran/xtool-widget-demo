@@ -11,3 +11,5 @@ DerivedData/
 
 verify/
 *.ipa
+shots/
+out/
