@@ -1,0 +1,46 @@
+name: Widget Simulator Test
+on: workflow_dispatch
+jobs:
+  sim:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode*.app | grep -vE "\.app\.app" | sort -V | tail -1)
+          sudo xcode-select -s "$XC"; xcodebuild -version
+      - name: Install xtool
+        run: |
+          curl -sL -o xtool.app.zip \
+            https://github.com/xtool-org/xtool/releases/download/1.24.0/xtool.app.zip
+          unzip -q xtool.app.zip
+          XTOOL="$PWD/xtool.app/Contents/Resources/bin/xtool"
+          echo "XTOOL=$XTOOL" >> "$GITHUB_ENV"
+          "$XTOOL" --version
+      - name: Build for simulator
+        run: |
+          "$XTOOL" dev build --configuration release --ipa --triple arm64-apple-ios-simulator
+          ls -la xtool/ 2>&1 | head
+      - name: Install widget into simulator
+        run: |
+          set -e
+          UDID=$(xcrun simctl list devices available | grep -m1 -oE "[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}")
+          echo "simulator: $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          rm -rf simout && mkdir simout
+          # xtool emits an .ipa; for the simulator we install the .app payload
+          "$XTOOL" dev build --configuration release --triple arm64-apple-ios-simulator
+          APP=$(find . -maxdepth 3 -name "WidgetDemo.app" | head -1)
+          echo "APP=$APP"
+          xcrun simctl install "$UDID" "$APP"
+          echo "INSTALLED OK"
+          xcrun simctl launch "$UDID" com.example.WidgetDemo
+          sleep 10
+          xcrun simctl io "$UDID" screenshot /tmp/widget.png
+          echo "screenshot taken"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: widget-sim-screenshot
+          path: /tmp/widget.png
